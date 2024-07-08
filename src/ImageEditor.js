@@ -3,15 +3,13 @@ import React, { useRef, useState, useEffect } from 'react';
 const applyEffect = (image, effect, centerX, centerY, radius, strength) => {
     if (!window.fx) {
         console.error('glfx.js not loaded');
-        return;
+        return null;
     }
 
     const canvas = window.fx.canvas();
     const texture = canvas.texture(image);
 
     canvas.draw(texture);
-
-    console.log("Config",effect, centerX, centerY, radius, strength);
 
     if (effect === 'bulge') {
         canvas.bulgePinch(centerX, centerY, radius, strength);
@@ -25,55 +23,33 @@ const applyEffect = (image, effect, centerX, centerY, radius, strength) => {
 
 const ImageEditor = () => {
     const imageRef = useRef(null);
-    const originalCanvasRef = useRef(null);
     const modifiedCanvasRef = useRef(null);
     const [effect, setEffect] = useState('bulge');
     const [strength, setStrength] = useState(0.5);
     const [radius, setRadius] = useState(0.5);
     const [imageLoaded, setImageLoaded] = useState(false);
-    const [selectedArea, setSelectedArea] = useState(null); // { x, y, width, height }
+    const [selectedPoint, setSelectedPoint] = useState(null); // { x, y }
 
     useEffect(() => {
         const drawOriginalImage = () => {
-            if (imageRef.current && originalCanvasRef.current) {
+            if (imageRef.current) {
                 const image = imageRef.current;
-                const canvas = originalCanvasRef.current;
+                const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
 
-                const { x, y, width, height } = selectedArea || { x: 0, y: 0, width: image.width, height: image.height };
-                canvas.width = width;
-                canvas.height = height;
+                canvas.width = image.width;
+                canvas.height = image.height;
 
                 if (context) {
-                    context.drawImage(image, x, y, width, height, 0, 0, width, height);
-                }
-            }
-        };
-
-        const applyImageEffect = () => {
-            if (imageRef.current && modifiedCanvasRef.current && selectedArea) {
-                const image = imageRef.current;
-                const canvas = modifiedCanvasRef.current;
-                const centerX = selectedArea.x + selectedArea.width / 2;
-                const centerY = selectedArea.y + selectedArea.height / 2;
-
-                const texture = applyEffect(image, effect, centerX, centerY, radius, strength);
-                if (texture) {
-                    canvas.width = texture.width;
-                    canvas.height = texture.height;
-                    const context = canvas.getContext('2d');
-                    if (context) {
-                        context.drawImage(texture, 0, 0);
-                    }
+                    context.drawImage(image, 0, 0, image.width, image.height);
                 }
             }
         };
 
         if (imageLoaded) {
             drawOriginalImage();
-            applyImageEffect();
         }
-    }, [effect, strength, radius, imageLoaded, selectedArea]);
+    }, [imageLoaded]);
 
     const handleImageChange = (e) => {
         const file = e.target.files?.[0];
@@ -93,41 +69,37 @@ const ImageEditor = () => {
         setImageLoaded(true);
     };
 
-    const handleAreaSelect = (e) => {
+    const handleImageClick = (e) => {
         if (imageRef.current) {
             const image = imageRef.current;
             const boundingRect = image.getBoundingClientRect();
             const x = (e.clientX - boundingRect.left) * (image.width / boundingRect.width);
             const y = (e.clientY - boundingRect.top) * (image.height / boundingRect.height);
 
-            // Set selected area (example: 100x100 area centered at clicked point)
-            const width = 100;
-            const height = 100;
-            setSelectedArea({
-                x: Math.max(0, x - width / 2),
-                y: Math.max(0, y - height / 2),
-                width,
-                height,
-            });
+            setSelectedPoint({ x, y });
         }
     };
 
     const handleApplyEffect = () => {
-        if (imageRef.current && selectedArea) {
-            console.log("Selected Area",selectedArea);
+        if (imageRef.current && selectedPoint) {
             const image = imageRef.current;
             const canvas = modifiedCanvasRef.current;
-            const centerX = selectedArea.x + selectedArea.width / 2;
-            const centerY = selectedArea.y + selectedArea.height / 2;
+            const { x: centerX, y: centerY } = selectedPoint;
 
-            const texture = applyEffect(image, effect, centerX, centerY, radius, strength);
+            const texture = applyEffect(image, effect, centerX, centerY, radius * Math.min(image.width, image.height), strength);
             if (texture) {
                 canvas.width = texture.width;
                 canvas.height = texture.height;
                 const context = canvas.getContext('2d');
-                console.log("Context",context);
                 if (context) {
                     context.drawImage(texture, 0, 0);
+
+                    // Draw the selected point as a red circle
+                    context.strokeStyle = 'red';
+                    context.lineWidth = 2;
+                    context.beginPath();
+                    context.arc(centerX, centerY, 5, 0, 2 * Math.PI);
+                    context.stroke();
                 }
             }
         }
@@ -177,29 +149,30 @@ const ImageEditor = () => {
                     alt="To be edited"
                     style={{ maxWidth: '100%', maxHeight: '500px', cursor: 'crosshair' }}
                     onLoad={handleImageLoad}
-                    onClick={handleAreaSelect}
+                    onClick={handleImageClick}
                 />
-                {selectedArea && (
+                {selectedPoint && (
                     <div
                         style={{
                             position: 'absolute',
-                            left: selectedArea.x,
-                            top: selectedArea.y,
-                            width: selectedArea.width,
-                            height: selectedArea.height,
-                            border: '2px dashed #f00',
+                            left: selectedPoint.x - 5,
+                            top: selectedPoint.y - 5,
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: 'red',
+                            pointerEvents: 'none',
                         }}
                     />
                 )}
             </div>
             <div>
                 <div style={{ marginTop: '10px' }}>
-                    <button onClick={handleApplyEffect} disabled={!selectedArea || !imageLoaded}>
+                    <button onClick={handleApplyEffect} disabled={!selectedPoint || !imageLoaded}>
                         Apply Effect
                     </button>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: '10px' }}>
-                    <canvas ref={originalCanvasRef} />
                     <canvas ref={modifiedCanvasRef} />
                 </div>
             </div>
